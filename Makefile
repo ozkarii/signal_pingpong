@@ -1,14 +1,19 @@
-CC = gcc          # The compiler
-CFLAGS = -Wall    # Compiler flags: -Wall shows all warnings
-TARGET = pingpong # The output binary name
+CC = gcc
+CFLAGS = -Wall -g -O0
+CFILES = main.c
+OBJFILES = $(CFILES:.c=.o)  # Converts all .c files to .o files
+TARGET = pingpong
 
-# The first rule is the default target
 all: $(TARGET)
 
-# Rule for creating the binary
-$(TARGET): main.c
-	$(CC) $(CFLAGS) -o $(TARGET) main.c
+# Rule to build the target binary from object files
+$(TARGET): $(OBJFILES)
+	$(CC) $(CFLAGS) -o $(TARGET) $(OBJFILES)
 
-# Rule to clean up the generated files
+# Rule to build object files from source files
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Clean rule to remove object files and the binary
 clean:
-	rm -f $(TARGET)
+	rm -f $(TARGET) $(OBJFILES)
