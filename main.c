@@ -6,26 +6,29 @@
 #include <stdlib.h>
 
 /*
-PARENT receives SIGUSR1
-CHILD receives SIGUSR2
+22 Signal pingpong
+
+Authors: Oskari Heinonen & Rasmus Salmi
+
 */
 
 #define HELP_STR "Usage: pingpong [<options>]\n    --copies, -c        Amount of child process copies to be created\n"
 #define SLEEP_TIME_US 50000
 
-pid_t parent_pid;
-int num_children = 0;
-int sigusr1_count = 0;
-int parent_running_flag = 1;
-pid_t* child_processes = NULL;
+pid_t parent_pid;              // process id of parent
+int num_children = 0;          // number of children to be created
+int sigusr1_count = 0;         // amount of signals parent has received from children
+int parent_running_flag = 1;   // used for exiting from parent process, always 1 for children
+pid_t* child_processes = NULL; // dynamically allocated array of child PIDs
 
 
-// Send SIGUSR2 to all children, call after all SIGUSR1s have been received from kids
+// Sends SIGUSR2 to all children, call after all SIGUSR1s have been received from kids
 void kill_children() 
 {
     for (int i = 0; i < num_children; i++) {
         usleep(SLEEP_TIME_US);
-        printf("Parent sending #%d SIGUSR2 to PID %d...\n", i, child_processes[i]);
+        printf("Parent sending #%d SIGUSR2 to PID %d...\n", i + 1, child_processes[i]);
+        // Kill syscall used to send signal to child processes
         if (!kill(child_processes[i], SIGUSR2) == 0) {
             printf("Error in parent sending SIGUSR2 to PID %d", child_processes[i]);
         }
@@ -33,7 +36,7 @@ void kill_children()
     parent_running_flag = 0;
 }
 
-// Parent process receives SIGUSR1 from children
+// Handler for receiving SIGUSR1 from children
 void sigusr1_handler(int signum) 
 {
     // Should only be used by parent
@@ -44,20 +47,22 @@ void sigusr1_handler(int signum)
     sigusr1_count++;
     printf("SIGUSR1 #%d received by parent PID %d\n", sigusr1_count, getpid());
 
+    // if signal received from all children
     if (sigusr1_count == num_children) {
         printf("Start killing children... ;)\n");
         kill_children();
     }
 }
 
-// Child receives SIGUSR2 and exits
+// Handler for SIGUSR2 signal received by children. Exit point for children.
 void sigusr2_handler(int signum) 
-{
+{   
+    // Should only be used by children
     if (getpid() == parent_pid) {
         return;
     }
     printf("SIGUSR2 received by PID %d, exiting...\n", getpid());
-    free(child_processes);
+    free(child_processes); // free memory from each child's PID array
     exit(0);
 }
 
@@ -87,27 +92,30 @@ int main(int argc, char** argv)
     num_children = atoi(argv[2]);
     child_processes = malloc(sizeof(pid_t) * num_children);
 
-    // Set SIGUSR1 handler for parent
+    // Set SIGUSR1 handler for parent. 
+    // Using POSIX function sigaction() instead of signal().
     struct sigaction sa1;
     sa1.sa_handler = &sigusr1_handler;
     sigaction(SIGUSR1, &sa1, NULL);
 
     for (int i = 0; i < num_children; i++) {
+        // Put parent process to sleep to give time for previous child to send signal
+        // before creating another one.
         usleep(SLEEP_TIME_US);
-        pid = fork();
+        pid = fork(); // using fork to start a new process from here
         // if child process, stop forking
         if (pid == 0) {
             struct sigaction sa2;
             sa2.sa_handler = &sigusr2_handler;
             sigaction(SIGUSR2, &sa2, NULL);
             printf("PID %d sending SIGUSR1 to parent PID %d...\n", getpid(), parent_pid);
-            kill(parent_pid, SIGUSR1);
-            pause();
+            kill(parent_pid, SIGUSR1); // send signal with kill syscall
+            pause(); // pause child until a signal is received
             break;
         }
         else {
             printf("PID %d created\n", pid);
-            child_processes[i] = pid;
+            child_processes[i] = pid; // store newly created child's PID to the array
         }
     }
     
@@ -115,11 +123,16 @@ int main(int argc, char** argv)
         printf("All children spawned, last PID: %d\n", pid);
     }
 
+    // Parent pauses until kill_children() unsets the flag.
+    // Also, if the pause of child is interrupted above by someone else
+    // than parent, the child will pause here
     while (parent_running_flag) {
         pause();
     }
 
     free(child_processes);
+
+    printf("All children killed, parent exiting...\n");
 
     return 0;
 }
