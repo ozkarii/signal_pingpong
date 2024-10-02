@@ -23,7 +23,7 @@ void kill_children()
 {
     for (int i = 0; i < num_children; i++) {
         printf("Parent sending SIGUSR2 to PID %d...\n", child_processes[i]);
-        if (!kill(child_processes[i], SIGUSR2) == 0) {
+        if (kill(child_processes[i], SIGUSR2) != 0) {
             printf("Error in parent sending SIGUSR2 to PID %d", child_processes[i]);
         }
     }
@@ -86,14 +86,17 @@ int main(int argc, char** argv)
 
     // Set SIGUSR1 handler for parent
     signal(SIGUSR1, sigusr1_handler);
-    // Set SIGUSR2 handler for child 
-    signal(SIGUSR2, sigusr2_handler);
 
     for (int i = 0; i < num_children; i++) {
         pid = fork();
         // if child process, stop forking
         if (pid == 0) {
-            break;
+            // Set SIGUSR2 handler for child 
+            signal(SIGUSR2, sigusr2_handler);
+            usleep(i*50000);
+            printf("PID %d sending SIGUSR1 to parent PID %d...\n", getpid(), parent_pid);
+            kill(parent_pid, SIGUSR1);
+            pause();
         }
         else {
             printf("PID %d created\n", pid);
@@ -103,12 +106,6 @@ int main(int argc, char** argv)
     
     if (pid != 0) {
         printf("All children spawned, last PID: %d\n", pid);
-    }
-    
-    // Send SIGUSR1 to parent
-    if (pid == 0) {
-        printf("PID %d sending SIGUSR1 to parent PID %d...\n", getpid(), parent_pid);
-        kill(parent_pid, SIGUSR1);
     }
 
     while (parent_running_flag);
