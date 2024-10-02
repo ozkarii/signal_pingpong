@@ -10,7 +10,8 @@ PARENT receives SIGUSR1
 CHILD receives SIGUSR2
 */
 
-#define HELP_STR "Usage: pingpong [<options>]\n\n    --copies, -c        Amount of child process copies to be created\n"
+#define HELP_STR "Usage: pingpong [<options>]\n    --copies, -c        Amount of child process copies to be created\n"
+#define SLEEP_TIME_US 50000
 
 pid_t parent_pid;
 int num_children = 0;
@@ -18,11 +19,13 @@ int sigusr1_count = 0;
 int parent_running_flag = 1;
 pid_t* child_processes = NULL;
 
+
 // Send SIGUSR2 to all children, call after all SIGUSR1s have been received from kids
 void kill_children() 
 {
     for (int i = 0; i < num_children; i++) {
-        printf("Parent sending SIGUSR2 to PID %d...\n", child_processes[i]);
+        usleep(SLEEP_TIME_US);
+        printf("Parent sending #%d SIGUSR2 to PID %d...\n", i, child_processes[i]);
         if (!kill(child_processes[i], SIGUSR2) == 0) {
             printf("Error in parent sending SIGUSR2 to PID %d", child_processes[i]);
         }
@@ -85,14 +88,21 @@ int main(int argc, char** argv)
     child_processes = malloc(sizeof(pid_t) * num_children);
 
     // Set SIGUSR1 handler for parent
-    signal(SIGUSR1, sigusr1_handler);
-    // Set SIGUSR2 handler for child 
-    signal(SIGUSR2, sigusr2_handler);
+    struct sigaction sa1;
+    sa1.sa_handler = &sigusr1_handler;
+    sigaction(SIGUSR1, &sa1, NULL);
 
     for (int i = 0; i < num_children; i++) {
+        usleep(SLEEP_TIME_US);
         pid = fork();
         // if child process, stop forking
         if (pid == 0) {
+            struct sigaction sa2;
+            sa2.sa_handler = &sigusr2_handler;
+            sigaction(SIGUSR2, &sa2, NULL);
+            printf("PID %d sending SIGUSR1 to parent PID %d...\n", getpid(), parent_pid);
+            kill(parent_pid, SIGUSR1);
+            pause();
             break;
         }
         else {
@@ -104,15 +114,11 @@ int main(int argc, char** argv)
     if (pid != 0) {
         printf("All children spawned, last PID: %d\n", pid);
     }
-    
-    // Send SIGUSR1 to parent
-    if (pid == 0) {
-        printf("PID %d sending SIGUSR1 to parent PID %d...\n", getpid(), parent_pid);
-        kill(parent_pid, SIGUSR1);
+
+    while (parent_running_flag) {
+        pause();
     }
 
-    while (parent_running_flag);
-    
     free(child_processes);
 
     return 0;
