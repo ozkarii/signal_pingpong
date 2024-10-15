@@ -36,6 +36,18 @@ void kill_children()
     parent_running_flag = 0;
 }
 
+void sigint_handler(int signum)
+{
+	if (getpid() == parent_pid) {
+		printf("SIGINT RECEIVED BY PARENT\n");
+        exit(1);
+    }
+    else {
+    	printf("SIGINT RECEIVED BY CHILD\n");
+    	kill(parent_pid, SIGINT);
+    }
+}
+
 // Handler for receiving SIGUSR1 from children
 void sigusr1_handler(int signum) 
 {
@@ -70,7 +82,6 @@ void sigusr2_handler(int signum)
 int main(int argc, char** argv) 
 {
     parent_pid = getpid();
-    pid_t pid = 0; // PID to be used for getting child PIDs
 
     if (argc < 2) {
         printf("No parameters given.\n");
@@ -83,13 +94,19 @@ int main(int argc, char** argv)
             printf(HELP_STR);
             return 1;
         }
+        num_children = atoi(argv[2]);
+		if (num_children < 1) {
+			printf("Invalid number of children to spawn\n");
+			return 1;
+		}
     }
     else {
         printf("Invalid option\n");
         printf(HELP_STR);
+        return 1;
     }
 
-    num_children = atoi(argv[2]);
+	pid_t pid = 0; // PID to be used for getting child PIDs
     child_processes = malloc(sizeof(pid_t) * num_children);
 
     // Set SIGUSR1 handler for parent. 
@@ -97,6 +114,10 @@ int main(int argc, char** argv)
     struct sigaction sa1;
     sa1.sa_handler = &sigusr1_handler;
     sigaction(SIGUSR1, &sa1, NULL);
+
+    struct sigaction sa_int;
+    sa_int.sa_handler = &sigint_handler;
+    sigaction(SIGINT, &sa_int, NULL);
 
     for (int i = 0; i < num_children; i++) {
         // Put parent process to sleep to give time for previous child to send signal
